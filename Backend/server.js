@@ -21,15 +21,12 @@ const server = createServer(app);
 const wss    = new WebSocket.Server({ server });
 
 /* ─── CONFIG ─────────────────────────────────────────────────── */
-const PORT        = process.env.PORT        || 3000;
-const JWT_SECRET  = process.env.JWT_SECRET  || 'ganti_dengan_secret_panjang_acak_di_produksi';
-const JWT_EXPIRES = process.env.JWT_EXPIRES || '8h';
 const DB_CONFIG = {
-  host:               process.env.DB_HOST     || 'localhost',
-  user:               process.env.DB_USER     || 'root',
-  password:           process.env.DB_PASS     || '',
-  database:           process.env.DB_NAME     || 'pkm_antrian',
-  port:     parseInt(process.env.DB_PORT)     || 3306,
+  host:     process.env.DB_HOST      || process.env.MYSQLHOST     || 'localhost',
+  user:     process.env.DB_USER      || process.env.MYSQLUSER     || 'root',
+  password: process.env.DB_PASS      || process.env.MYSQLPASSWORD || '',
+  database: process.env.DB_NAME      || process.env.MYSQLDATABASE || 'rs_antrian',
+  port:     parseInt(process.env.DB_PORT || process.env.MYSQLPORT || 3306),
   waitForConnections: true,
   connectionLimit:    10,
   charset:            'utf8mb4',
