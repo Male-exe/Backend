@@ -32,11 +32,16 @@ const DB_CONFIG = {
   charset:            'utf8mb4',
 };
 
+// ⬇️ TAMBAHKAN BARIS INI ⬇️
+const PORT        = parseInt(process.env.PORT || 3000);
+const JWT_SECRET  = process.env.JWT_SECRET  || 'ganti-dengan-secret-aman-anda';
+const JWT_EXPIRES = process.env.JWT_EXPIRES || '24h';
+
 /* ─── DATABASE ───────────────────────────────────────────────── */
 let pool;
 
 async function initDB() {
-  pool = await mysql.createPool(DB);
+  pool = await mysql.createPool(DB_CONFIG);
 
   // Tabel users
   await pool.execute(`
