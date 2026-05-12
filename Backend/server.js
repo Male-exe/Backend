@@ -588,13 +588,12 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', time: new Date().toIS
 /* ─── START ──────────────────────────────────────────────────── */
 initDB().then(() => {
   server.listen(PORT, () => {
-    console.log(`\n🚀 Server: http://localhost:${PORT}`);
-    console.log(`📱 Kiosk  : http://localhost:${PORT}/kiosk`);
-    console.log(`💼 Petugas: http://localhost:${PORT}/petugas`);
-    console.log(`📺 Display: http://localhost:${PORT}/display`);
-    console.log(`⚙️  Admin  : http://localhost:${PORT}/admin\n`);
+    console.log(`🚀 Server berjalan di port ${PORT}`);
   });
 }).catch(err => {
-  console.error('❌ DB Error:', err.message);
+  console.error('❌ DB Error (detail):');
+  console.error(err);                    // ⬅️ cetak objek error lengkap
+  if (err.code) console.error('Kode error:', err.code);
+  if (err.sqlMessage) console.error('SQL Message:', err.sqlMessage);
   process.exit(1);
 });
