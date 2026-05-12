@@ -24,13 +24,15 @@ const wss    = new WebSocket.Server({ server });
 const PORT        = process.env.PORT        || 3000;
 const JWT_SECRET  = process.env.JWT_SECRET  || 'ganti_dengan_secret_panjang_acak_di_produksi';
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '8h';
-const DB = {
-  host:             process.env.DB_HOST     || 'localhost',
-  user:             process.env.DB_USER     || 'root',
-  password:         process.env.DB_PASS     || '',
-  database:         process.env.DB_NAME     || 'rs_antrian',
+const DB_CONFIG = {
+  host:               process.env.DB_HOST     || 'localhost',
+  user:               process.env.DB_USER     || 'root',
+  password:           process.env.DB_PASS     || '',
+  database:           process.env.DB_NAME     || 'pkm_antrian',
+  port:     parseInt(process.env.DB_PORT)     || 3306,
   waitForConnections: true,
-  connectionLimit:  10,
+  connectionLimit:    10,
+  charset:            'utf8mb4',
 };
 
 /* ─── DATABASE ───────────────────────────────────────────────── */
