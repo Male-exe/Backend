@@ -155,7 +155,7 @@ function authMiddleware(roles = []) {
 function nowTime() {
   return new Date().toLocaleTimeString('id-ID', {
     hour12: false,
-    timeZone: 'Asia/Jakarta'
+    timeZone: 'Asia/Makassar'
   });
 }
 
@@ -179,7 +179,7 @@ function fmtQueue(r) {
     timestamp:   r.created_at
       ? new Date(r.created_at).toLocaleTimeString('id-ID', {
         hour12: false,
-        timeZone: 'Asia/Jakarta'
+        timeZone: 'Asia/Makassar'
       })
       : nowTime(),
     createdAt:   r.created_at,
