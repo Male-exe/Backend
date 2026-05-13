@@ -153,7 +153,10 @@ function authMiddleware(roles = []) {
 
 /* ─── HELPERS ────────────────────────────────────────────────── */
 function nowTime() {
-  return new Date().toLocaleTimeString('id-ID', { hour12: false });
+  return new Date().toLocaleTimeString('id-ID', {
+    hour12: false,
+    timeZone: 'Asia/Jakarta'
+  });
 }
 
 async function getNextQueueNumber(poliId) {
@@ -174,7 +177,10 @@ function fmtQueue(r) {
     poliName:    r.poli_name,
     status:      r.status,
     timestamp:   r.created_at
-      ? new Date(r.created_at).toLocaleTimeString('id-ID', { hour12: false })
+      ? new Date(r.created_at).toLocaleTimeString('id-ID', {
+        hour12: false,
+        timeZone: 'Asia/Jakarta'
+      })
       : nowTime(),
     createdAt:   r.created_at,
   };
