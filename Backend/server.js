@@ -73,7 +73,7 @@ async function initDB() {
     CREATE TABLE IF NOT EXISTS queues (
       id           INT AUTO_INCREMENT PRIMARY KEY,
       queue_number INT          NOT NULL,
-      name         VARCHAR(100) NOT NULL DEFAULT 'Pasien Anonim',
+      name         VARCHAR(100) NOT NULL DEFAULT 'Pasien',
       poli_id      INT          NOT NULL,
       poli_name    VARCHAR(80)  NOT NULL,
       status       ENUM('waiting','called','done') NOT NULL DEFAULT 'waiting',
@@ -359,7 +359,7 @@ app.get('/api/queue', async (req, res) => {
 
 // POST ambil nomor antrian (patient / public)
 app.post('/api/queue', async (req, res) => {
-  const name   = (req.body.name  || '').trim() || 'Pasien Anonim';
+  const name   = (req.body.name  || '').trim() || 'Pasien';
   const poliId = parseInt(req.body.poli_id);
   if (!poliId || isNaN(poliId))
     return res.status(400).json({ error: 'Pilih poliklinik terlebih dahulu.' });
