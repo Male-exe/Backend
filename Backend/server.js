@@ -7,14 +7,14 @@
  */
 
 require('dotenv').config();
-const express     = require('express');
-const cors        = require('cors');
-const path        = require('path');
+const express          = require('express');
+const cors             = require('cors');
+const path             = require('path');
 const { createServer } = require('http');
-const WebSocket   = require('ws');
-const mysql       = require('mysql2/promise');
-const bcrypt      = require('bcryptjs');
-const jwt         = require('jsonwebtoken');
+const WebSocket        = require('ws');
+const mysql            = require('mysql2/promise');
+const bcrypt           = require('bcryptjs');
+const jwt              = require('jsonwebtoken');
 
 const app    = express();
 const server = createServer(app);
@@ -22,17 +22,16 @@ const wss    = new WebSocket.Server({ server });
 
 /* ─── CONFIG ─────────────────────────────────────────────────── */
 const DB_CONFIG = {
-  host:     process.env.DB_HOST      || process.env.MYSQLHOST     || 'localhost',
-  user:     process.env.DB_USER      || process.env.MYSQLUSER     || 'root',
-  password: process.env.DB_PASS      || process.env.MYSQLPASSWORD || '',
-  database: process.env.DB_NAME      || process.env.MYSQLDATABASE || 'rs_antrian',
-  port:     parseInt(process.env.DB_PORT || process.env.MYSQLPORT || 3306),
+  host:               process.env.DB_HOST      || process.env.MYSQLHOST     || 'localhost',
+  user:               process.env.DB_USER      || process.env.MYSQLUSER     || 'root',
+  password:           process.env.DB_PASS      || process.env.MYSQLPASSWORD || '',
+  database:           process.env.DB_NAME      || process.env.MYSQLDATABASE || 'rs_antrian',
+  port:               parseInt(process.env.DB_PORT || process.env.MYSQLPORT || 3306),
   waitForConnections: true,
   connectionLimit:    10,
   charset:            'utf8mb4',
 };
 
-// ⬇️ TAMBAHKAN BARIS INI ⬇️
 const PORT        = parseInt(process.env.PORT || 3000);
 const JWT_SECRET  = process.env.JWT_SECRET  || 'ganti-dengan-secret-aman-anda';
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '24h';
@@ -43,7 +42,6 @@ let pool;
 async function initDB() {
   pool = await mysql.createPool(DB_CONFIG);
 
-  // Tabel users
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id         INT AUTO_INCREMENT PRIMARY KEY,
@@ -57,7 +55,6 @@ async function initDB() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
-  // Tabel polyclinics
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS polyclinics (
       id         INT AUTO_INCREMENT PRIMARY KEY,
@@ -68,7 +65,6 @@ async function initDB() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
-  // Tabel queues
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS queues (
       id           INT AUTO_INCREMENT PRIMARY KEY,
@@ -83,7 +79,7 @@ async function initDB() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
-  // Seed data awal jika belum ada
+  // Seed polyclinics
   const [polis] = await pool.execute('SELECT COUNT(*) as c FROM polyclinics');
   if (polis[0].c === 0) {
     await pool.execute(`
@@ -94,6 +90,7 @@ async function initDB() {
     console.log('✅ Seed polyclinics selesai.');
   }
 
+  // Seed admin
   const [admins] = await pool.execute("SELECT COUNT(*) as c FROM users WHERE role='admin'");
   if (admins[0].c === 0) {
     const hash = await bcrypt.hash('admin123', 12);
@@ -106,6 +103,42 @@ async function initDB() {
   }
 
   console.log('✅ Database siap.');
+}
+
+/* ─── AUTO RESET ANTRIAN ─────────────────────────────────────── */
+async function resetAntrian() {
+  try {
+    const [result] = await pool.execute(
+      "UPDATE queues SET status='done' WHERE status IN ('waiting','called')"
+    );
+    console.log(`🔄 Antrian direset: ${result.affectedRows} data diubah ke 'done'.`);
+    broadcast({ type: 'QUEUE_UPDATE', action: 'RESET' });
+  } catch (err) {
+    console.error('❌ Gagal mereset antrian:', err);
+  }
+}
+
+function scheduleAutoResetMidnight() {
+  const now          = new Date();
+  const nextMidnight = new Date();
+  nextMidnight.setHours(24, 0, 0, 0);
+
+  const msUntilMidnight = nextMidnight - now;
+
+  setTimeout(async () => {
+    await resetAntrian();
+    console.log('🌙 Auto-reset antrian tengah malam selesai.');
+
+    // Ulangi setiap 24 jam
+    setInterval(async () => {
+      await resetAntrian();
+      console.log('🌙 Auto-reset antrian tengah malam selesai.');
+    }, 24 * 60 * 60 * 1000);
+
+  }, msUntilMidnight);
+
+  const menitLagi = Math.round(msUntilMidnight / 1000 / 60);
+  console.log(`⏰ Auto-reset tengah malam dijadwalkan ${menitLagi} menit lagi.`);
 }
 
 /* ─── WEBSOCKET ──────────────────────────────────────────────── */
@@ -137,12 +170,12 @@ function authMiddleware(roles = []) {
   return (req, res, next) => {
     const header = req.headers['authorization'] || '';
     const token  = header.startsWith('Bearer ') ? header.slice(7) : null;
-    if (!token) return res.status(401).json({ error: 'Token tidak ditemukan. Silakan login.' });
+    if (!token)
+      return res.status(401).json({ error: 'Token tidak ditemukan. Silakan login.' });
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
-      if (roles.length && !roles.includes(decoded.role)) {
+      if (roles.length && !roles.includes(decoded.role))
         return res.status(403).json({ error: 'Akses ditolak. Role tidak sesuai.' });
-      }
       req.user = decoded;
       next();
     } catch {
@@ -154,13 +187,12 @@ function authMiddleware(roles = []) {
 /* ─── HELPERS ────────────────────────────────────────────────── */
 function nowTime() {
   return new Date().toLocaleTimeString('id-ID', {
-    hour12: false,
-    timeZone: 'Asia/Makassar'
+    hour12:   false,
+    timeZone: 'Asia/Makassar',
   });
 }
 
-async function getNextQueueNumber(poliId) {
-  // ANTRIAN GLOBAL - nomor berurutan untuk semua poli
+async function getNextQueueNumber() {
   const [rows] = await pool.execute(
     `SELECT COALESCE(MAX(queue_number), 0) + 1 AS n
      FROM queues WHERE DATE(created_at) = CURDATE()`
@@ -178,11 +210,11 @@ function fmtQueue(r) {
     status:      r.status,
     timestamp:   r.created_at
       ? new Date(r.created_at).toLocaleTimeString('id-ID', {
-        hour12: false,
-        timeZone: 'Asia/Makassar'
-      })
+          hour12:   false,
+          timeZone: 'Asia/Makassar',
+        })
       : nowTime(),
-    createdAt:   r.created_at,
+    createdAt: r.created_at,
   };
 }
 
@@ -203,7 +235,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!rows.length)
       return res.status(401).json({ error: 'Username atau password salah.' });
 
-    const user = rows[0];
+    const user  = rows[0];
     const match = await bcrypt.compare(password, user.password);
     if (!match)
       return res.status(401).json({ error: 'Username atau password salah.' });
@@ -211,13 +243,19 @@ app.post('/api/auth/login', async (req, res) => {
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role,
         fullName: user.full_name, poliId: user.poli_id },
-      JWT_SECRET, { expiresIn: JWT_EXPIRES }
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES }
     );
 
     res.json({
       token,
-      user: { id: user.id, username: user.username, role: user.role,
-              fullName: user.full_name, poliId: user.poli_id }
+      user: {
+        id:       user.id,
+        username: user.username,
+        role:     user.role,
+        fullName: user.full_name,
+        poliId:   user.poli_id,
+      },
     });
   } catch (err) {
     console.error(err);
@@ -236,14 +274,15 @@ app.get('/api/polyclinics', async (_req, res) => {
       'SELECT * FROM polyclinics WHERE is_active = 1 ORDER BY name'
     );
     res.json(rows);
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Gagal mengambil data poliklinik.' });
   }
 });
 
 app.post('/api/polyclinics', authMiddleware(['admin']), async (req, res) => {
   const { code, name } = req.body || {};
-  if (!code || !name) return res.status(400).json({ error: 'Code dan nama wajib diisi.' });
+  if (!code || !name)
+    return res.status(400).json({ error: 'Code dan nama wajib diisi.' });
   try {
     const [r] = await pool.execute(
       'INSERT INTO polyclinics (code, name) VALUES (?, ?)',
@@ -265,7 +304,7 @@ app.put('/api/polyclinics/:id', authMiddleware(['admin']), async (req, res) => {
       [name, is_active !== undefined ? is_active : 1, req.params.id]
     );
     res.json({ ok: true });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Gagal update poliklinik.' });
   }
 });
@@ -277,7 +316,7 @@ app.get('/api/users', authMiddleware(['admin']), async (_req, res) => {
       'SELECT id, username, full_name, role, poli_id, is_active, created_at FROM users ORDER BY role, full_name'
     );
     res.json(rows);
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Gagal mengambil data pengguna.' });
   }
 });
@@ -286,11 +325,11 @@ app.post('/api/users', authMiddleware(['admin']), async (req, res) => {
   const { username, password, full_name, role, poli_id } = req.body || {};
   if (!username || !password || !full_name || !role)
     return res.status(400).json({ error: 'Semua field wajib diisi.' });
-  if (!['admin','petugas'].includes(role))
+  if (!['admin', 'petugas'].includes(role))
     return res.status(400).json({ error: 'Role tidak valid.' });
   try {
     const hash = await bcrypt.hash(password, 12);
-    const [r] = await pool.execute(
+    const [r]  = await pool.execute(
       'INSERT INTO users (username, password, full_name, role, poli_id) VALUES (?,?,?,?,?)',
       [username, hash, full_name, role, poli_id || null]
     );
@@ -318,7 +357,7 @@ app.put('/api/users/:id', authMiddleware(['admin']), async (req, res) => {
       );
     }
     res.json({ ok: true });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Gagal update pengguna.' });
   }
 });
@@ -329,7 +368,7 @@ app.delete('/api/users/:id', authMiddleware(['admin']), async (req, res) => {
   try {
     await pool.execute('UPDATE users SET is_active = 0 WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Gagal menonaktifkan pengguna.' });
   }
 });
@@ -339,10 +378,9 @@ app.delete('/api/users/:id', authMiddleware(['admin']), async (req, res) => {
 // GET antrian aktif (public — untuk display & kiosk)
 app.get('/api/queue', async (req, res) => {
   try {
-    const poliFilter = req.query.poli_id
-      ? 'AND q.poli_id = ?' : '';
-    const params = req.query.poli_id ? [req.query.poli_id] : [];
-    const [rows] = await pool.execute(
+    const poliFilter = req.query.poli_id ? 'AND q.poli_id = ?' : '';
+    const params     = req.query.poli_id ? [req.query.poli_id] : [];
+    const [rows]     = await pool.execute(
       `SELECT q.* FROM queues q
        WHERE q.status IN ('waiting','called')
          AND DATE(q.created_at) = CURDATE()
@@ -359,7 +397,7 @@ app.get('/api/queue', async (req, res) => {
 
 // POST ambil nomor antrian (patient / public)
 app.post('/api/queue', async (req, res) => {
-  const name   = (req.body.name  || '').trim() || 'Pasien';
+  const name   = (req.body.name || '').trim() || 'Pasien';
   const poliId = parseInt(req.body.poli_id);
   if (!poliId || isNaN(poliId))
     return res.status(400).json({ error: 'Pilih poliklinik terlebih dahulu.' });
@@ -371,13 +409,13 @@ app.post('/api/queue', async (req, res) => {
     if (!polis.length)
       return res.status(404).json({ error: 'Poliklinik tidak ditemukan.' });
 
-    const qNum  = await getNextQueueNumber(poliId);
+    const qNum  = await getNextQueueNumber();
     const [ins] = await pool.execute(
       'INSERT INTO queues (queue_number, name, poli_id, poli_name) VALUES (?,?,?,?)',
       [qNum, name, poliId, polis[0].name]
     );
     const [rows] = await pool.execute('SELECT * FROM queues WHERE id = ?', [ins.insertId]);
-    const item = fmtQueue(rows[0]);
+    const item   = fmtQueue(rows[0]);
     broadcast({ type: 'QUEUE_UPDATE', action: 'ADD', item });
     res.status(201).json(item);
   } catch (err) {
@@ -387,10 +425,9 @@ app.post('/api/queue', async (req, res) => {
 });
 
 // PUT panggil antrian spesifik (petugas/admin)
-app.put('/api/queue/:id/call', authMiddleware(['petugas','admin']), async (req, res) => {
+app.put('/api/queue/:id/call', authMiddleware(['petugas', 'admin']), async (req, res) => {
   const id = parseInt(req.params.id);
   try {
-    // Selesaikan yang sedang called di poli yang sama
     const [target] = await pool.execute('SELECT * FROM queues WHERE id = ?', [id]);
     if (!target.length)
       return res.status(404).json({ error: 'Antrian tidak ditemukan.' });
@@ -406,7 +443,7 @@ app.put('/api/queue/:id/call', authMiddleware(['petugas','admin']), async (req, 
       [req.user.id, id]
     );
     const [rows] = await pool.execute('SELECT * FROM queues WHERE id = ?', [id]);
-    const item = fmtQueue(rows[0]);
+    const item   = fmtQueue(rows[0]);
     broadcast({ type: 'QUEUE_UPDATE', action: 'CALL', item });
     res.json(item);
   } catch (err) {
@@ -416,8 +453,7 @@ app.put('/api/queue/:id/call', authMiddleware(['petugas','admin']), async (req, 
 });
 
 // POST panggil berikutnya (petugas/admin)
-app.post('/api/queue/call-next', authMiddleware(['petugas','admin']), async (req, res) => {
-  // Petugas hanya bisa panggil poli mereka sendiri (kecuali admin)
+app.post('/api/queue/call-next', authMiddleware(['petugas', 'admin']), async (req, res) => {
   const poliId = req.user.role === 'admin'
     ? (req.body.poli_id || null)
     : req.user.poliId;
@@ -454,7 +490,7 @@ app.post('/api/queue/call-next', authMiddleware(['petugas','admin']), async (req
 });
 
 // PUT selesaikan layanan (petugas/admin)
-app.put('/api/queue/:id/finish', authMiddleware(['petugas','admin']), async (req, res) => {
+app.put('/api/queue/:id/finish', authMiddleware(['petugas', 'admin']), async (req, res) => {
   const id = parseInt(req.params.id);
   try {
     const [rows] = await pool.execute('SELECT * FROM queues WHERE id = ?', [id]);
@@ -473,8 +509,8 @@ app.put('/api/queue/:id/finish', authMiddleware(['petugas','admin']), async (req
   }
 });
 
-// POST panggil ulang (recall) — hanya broadcast, tidak ubah status
-app.post('/api/queue/recall', authMiddleware(['petugas','admin']), async (req, res) => {
+// POST panggil ulang / recall (petugas/admin)
+app.post('/api/queue/recall', authMiddleware(['petugas', 'admin']), async (req, res) => {
   try {
     const poliId = req.user.role === 'admin'
       ? (req.body.poli_id || null)
@@ -483,7 +519,6 @@ app.post('/api/queue/recall', authMiddleware(['petugas','admin']), async (req, r
     const poliFilter = poliId ? 'AND poli_id = ?' : '';
     const params     = poliId ? [poliId] : [];
 
-    /* Cari antrian yang sedang dipanggil (called) */
     const [called] = await pool.execute(
       `SELECT * FROM queues WHERE status='called' ${poliFilter} LIMIT 1`,
       params
@@ -492,7 +527,6 @@ app.post('/api/queue/recall', authMiddleware(['petugas','admin']), async (req, r
       return res.status(404).json({ error: 'Tidak ada antrian yang sedang dipanggil.' });
 
     const item = fmtQueue(called[0]);
-    /* Broadcast action RECALL ke semua client (display akan putar suara ulang) */
     broadcast({ type: 'QUEUE_UPDATE', action: 'RECALL', item });
     res.json(item);
   } catch (err) {
@@ -501,21 +535,18 @@ app.post('/api/queue/recall', authMiddleware(['petugas','admin']), async (req, r
   }
 });
 
-// DELETE reset antrian (admin only)
+// DELETE reset antrian manual (admin only)
 app.delete('/api/queue/reset', authMiddleware(['admin']), async (_req, res) => {
   try {
-    await pool.execute(
-      "UPDATE queues SET status='done' WHERE status IN ('waiting','called')"
-    );
-    broadcast({ type: 'QUEUE_UPDATE', action: 'RESET' });
+    await resetAntrian();
     res.json({ ok: true });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Gagal mereset antrian.' });
   }
 });
 
-/* ─── STATS & EXPORT (admin) ─────────────────────────────────── */
-app.get('/api/stats', authMiddleware(['admin','petugas']), async (req, res) => {
+/* ─── STATS ──────────────────────────────────────────────────── */
+app.get('/api/stats', authMiddleware(['admin', 'petugas']), async (req, res) => {
   const date = req.query.date || new Date().toISOString().slice(0, 10);
   try {
     const [total] = await pool.execute(
@@ -529,13 +560,13 @@ app.get('/api/stats', authMiddleware(['admin','petugas']), async (req, res) => {
     const [byPoli] = await pool.execute(
       `SELECT poli_name,
          COUNT(*) AS total,
-         SUM(status='done') AS done,
+         SUM(status='done')    AS done,
          SUM(status='waiting') AS waiting
        FROM queues WHERE DATE(created_at) = ?
        GROUP BY poli_id, poli_name ORDER BY poli_name`, [date]
     );
     res.json({ date, summary: total[0], byPoli });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Gagal mengambil statistik.' });
   }
 });
@@ -553,12 +584,12 @@ app.get('/api/stats/public', async (req, res) => {
        FROM queues WHERE DATE(created_at) = ?`, [date]
     );
     res.json({ date, summary: total[0] });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Gagal mengambil statistik.' });
   }
 });
 
-// Export CSV
+/* ─── EXPORT CSV ─────────────────────────────────────────────── */
 app.get('/api/export/csv', authMiddleware(['admin']), async (req, res) => {
   const date = req.query.date || new Date().toISOString().slice(0, 10);
   try {
@@ -576,13 +607,13 @@ app.get('/api/export/csv', authMiddleware(['admin']), async (req, res) => {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="antrian-${date}.csv"`);
     res.send('\uFEFF' + header + body); // BOM untuk Excel
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Gagal export CSV.' });
   }
 });
 
 /* ─── STATIC PAGES ───────────────────────────────────────────── */
-app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
+app.get('/',        (_req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/kiosk',   (_req, res) => res.sendFile(path.join(__dirname, 'public', 'kiosk.html')));
 app.get('/petugas', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'petugas.html')));
 app.get('/display', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'display.html')));
@@ -592,14 +623,22 @@ app.get('/admin',   (_req, res) => res.sendFile(path.join(__dirname, 'public', '
 app.get('/health', (_req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
 /* ─── START ──────────────────────────────────────────────────── */
-initDB().then(() => {
+initDB().then(async () => {
+
+  // Reset antrian lama saat server dinyalakan
+  await resetAntrian();
+
+  // Jadwalkan auto-reset setiap tengah malam
+  scheduleAutoResetMidnight();
+
   server.listen(PORT, () => {
     console.log(`🚀 Server berjalan di port ${PORT}`);
   });
+
 }).catch(err => {
-  console.error('❌ DB Error (detail):');
-  console.error(err);                    // ⬅️ cetak objek error lengkap
-  if (err.code) console.error('Kode error:', err.code);
+  console.error('❌ DB Error:');
+  console.error(err);
+  if (err.code)       console.error('Kode error:', err.code);
   if (err.sqlMessage) console.error('SQL Message:', err.sqlMessage);
   process.exit(1);
 });
