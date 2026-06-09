@@ -119,26 +119,37 @@ async function resetAntrian() {
 }
 
 function scheduleAutoResetMidnight() {
-  const now          = new Date();
-  const nextMidnight = new Date();
-  nextMidnight.setHours(24, 0, 0, 0);
+  function getMsUntilMidnightMakassar() {
+    const now = new Date();
 
-  const msUntilMidnight = nextMidnight - now;
+    // Ambil waktu sekarang dalam zona Makassar (WITA UTC+8)
+    const nowMakassar = new Date(
+      now.toLocaleString('en-US', { timeZone: 'Asia/Makassar' })
+    );
+
+    // Hitung tengah malam berikutnya di Makassar
+    const nextMidnight = new Date(nowMakassar);
+    nextMidnight.setHours(24, 0, 0, 0);
+
+    return nextMidnight - nowMakassar;
+  }
+
+  const msUntilMidnight = getMsUntilMidnightMakassar();
 
   setTimeout(async () => {
     await resetAntrian();
-    console.log('🌙 Auto-reset antrian tengah malam selesai.');
+    console.log('🌙 Auto-reset antrian tengah malam (WITA) selesai.');
 
     // Ulangi setiap 24 jam
     setInterval(async () => {
       await resetAntrian();
-      console.log('🌙 Auto-reset antrian tengah malam selesai.');
+      console.log('🌙 Auto-reset antrian tengah malam (WITA) selesai.');
     }, 24 * 60 * 60 * 1000);
 
   }, msUntilMidnight);
 
   const menitLagi = Math.round(msUntilMidnight / 1000 / 60);
-  console.log(`⏰ Auto-reset tengah malam dijadwalkan ${menitLagi} menit lagi.`);
+  console.log(`⏰ Auto-reset dijadwalkan ${menitLagi} menit lagi (tengah malam WITA).`);
 }
 
 /* ─── WEBSOCKET ──────────────────────────────────────────────── */
