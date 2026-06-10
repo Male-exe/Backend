@@ -21,6 +21,8 @@ const server = createServer(app);
 const wss    = new WebSocket.Server({ server });
 
 /* ─── CONFIG ─────────────────────────────────────────────────── */
+const USE_SSL = process.env.DB_SSL === 'true';
+
 const DB_CONFIG = {
   host:               process.env.DB_HOST      || process.env.MYSQLHOST     || 'localhost',
   user:               process.env.DB_USER      || process.env.MYSQLUSER     || 'root',
@@ -30,6 +32,8 @@ const DB_CONFIG = {
   waitForConnections: true,
   connectionLimit:    10,
   charset:            'utf8mb4',
+  // SSL aktif otomatis jika DB_SSL=true (wajib untuk TiDB Cloud)
+  ...(USE_SSL && { ssl: { rejectUnauthorized: true } }),
 };
 
 const PORT        = parseInt(process.env.PORT || 3000);
