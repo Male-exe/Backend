@@ -119,37 +119,26 @@ async function resetAntrian() {
 }
 
 function scheduleAutoResetMidnight() {
-  function getMsUntilMidnightMakassar() {
-    const now = new Date();
+  const now          = new Date();
+  const nextMidnight = new Date();
+  nextMidnight.setHours(24, 0, 0, 0);
 
-    // Ambil waktu sekarang dalam zona Makassar (WITA UTC+8)
-    const nowMakassar = new Date(
-      now.toLocaleString('en-US', { timeZone: 'Asia/Makassar' })
-    );
-
-    // Hitung tengah malam berikutnya di Makassar
-    const nextMidnight = new Date(nowMakassar);
-    nextMidnight.setHours(24, 0, 0, 0);
-
-    return nextMidnight - nowMakassar;
-  }
-
-  const msUntilMidnight = getMsUntilMidnightMakassar();
+  const msUntilMidnight = nextMidnight - now;
 
   setTimeout(async () => {
     await resetAntrian();
-    console.log('🌙 Auto-reset antrian tengah malam (WITA) selesai.');
+    console.log('🌙 Auto-reset antrian tengah malam selesai.');
 
     // Ulangi setiap 24 jam
     setInterval(async () => {
       await resetAntrian();
-      console.log('🌙 Auto-reset antrian tengah malam (WITA) selesai.');
+      console.log('🌙 Auto-reset antrian tengah malam selesai.');
     }, 24 * 60 * 60 * 1000);
 
   }, msUntilMidnight);
 
   const menitLagi = Math.round(msUntilMidnight / 1000 / 60);
-  console.log(`⏰ Auto-reset dijadwalkan ${menitLagi} menit lagi (tengah malam WITA).`);
+  console.log(`⏰ Auto-reset tengah malam dijadwalkan ${menitLagi} menit lagi.`);
 }
 
 /* ─── WEBSOCKET ──────────────────────────────────────────────── */
@@ -203,10 +192,16 @@ function nowTime() {
   });
 }
 
+// Helper: filter tanggal pakai timezone WITA (UTC+8)
+// Digunakan di semua query agar tidak terpengaruh timezone server Railway (UTC)
+const TODAY_WITA = `DATE(CONVERT_TZ(created_at, '+00:00', '+08:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+08:00'))`;
+
 async function getNextQueueNumber() {
   const [rows] = await pool.execute(
+    // Hanya hitung antrian hari ini (WITA) — status apapun tidak mempengaruhi
+    // karena setelah reset, nomor baru dimulai dari 1 lagi di hari berikutnya
     `SELECT COALESCE(MAX(queue_number), 0) + 1 AS n
-     FROM queues WHERE DATE(created_at) = CURDATE()`
+     FROM queues WHERE ${TODAY_WITA}`
   );
   return rows[0].n;
 }
@@ -394,7 +389,7 @@ app.get('/api/queue', async (req, res) => {
     const [rows]     = await pool.execute(
       `SELECT q.* FROM queues q
        WHERE q.status IN ('waiting','called')
-         AND DATE(q.created_at) = CURDATE()
+         AND DATE(CONVERT_TZ(q.created_at, '+00:00', '+08:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+08:00'))
          ${poliFilter}
        ORDER BY q.queue_number ASC`,
       params
@@ -480,7 +475,9 @@ app.post('/api/queue/call-next', authMiddleware(['petugas', 'admin']), async (re
 
     const [waiting] = await pool.execute(
       `SELECT * FROM queues
-       WHERE status='waiting' AND DATE(created_at)=CURDATE() ${poliFilter}
+       WHERE status='waiting'
+         AND DATE(CONVERT_TZ(created_at, '+00:00', '+08:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+08:00'))
+         ${poliFilter}
        ORDER BY queue_number ASC LIMIT 1`,
       params
     );
